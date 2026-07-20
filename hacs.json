@@ -1,0 +1,6 @@
+{
+  "name": "Familyboard Whiteboard Card",
+  "filename": "familyboard-whiteboard-card.js",
+  "render_readme": true,
+  "homeassistant": "2024.4.0"
+}
