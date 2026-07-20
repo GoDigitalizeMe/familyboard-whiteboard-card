@@ -14,7 +14,12 @@
  * skipped while the user is actively interacting (_isBusy()).
  */
 
-const PEN_COLORS = ["#2b2320", "#F2A6A0", "#8FC1D4", "#A8D5BA", "#C9A6E0", "#F2A65A"];
+// "auto" resolves to the current theme's primary text color at the moment a
+// stroke is drawn (dark ink on a light board, light ink on a dark board),
+// so the default pen stays visible whichever mode the wallboard is in.
+// Once drawn, a stroke's color is baked in and won't change if the theme
+// flips later - same as real ink.
+const PEN_COLORS = ["auto", "#F2A6A0", "#8FC1D4", "#A8D5BA", "#C9A6E0", "#F2A65A"];
 const NOTE_COLORS = ["#F6D186", "#A8D5BA", "#C9A6E0", "#8FC1D4", "#F2A6A0", "#E397C4"];
 const PEN_WIDTHS = [3, 6, 12];
 const ERASER_WIDTH = 26;
@@ -229,10 +234,19 @@ class FamilyboardWhiteboardCard extends HTMLElement {
     syncActive();
   }
 
+  _resolveColor(color) {
+    if (color !== "auto") return color;
+    const resolved = getComputedStyle(this).getPropertyValue("--primary-text-color").trim();
+    return resolved || "#2b2320";
+  }
+
   _buildColorSwatches() {
     const container = this.shadowRoot.querySelector(".colors");
     container.innerHTML = PEN_COLORS.map(
-      (c) => `<button type="button" class="swatch" data-color="${c}" style="background:${c}"></button>`
+      (c) =>
+        `<button type="button" class="swatch" data-color="${c}" style="background:${
+          c === "auto" ? "var(--primary-text-color, #2b2320)" : c
+        }"></button>`
     ).join("");
     const swatches = container.querySelectorAll(".swatch");
     const syncActive = () => {
@@ -339,7 +353,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
     ev.preventDefault();
     const [x, y] = this._canvasPoint(ev);
     this._drawing = {
-      color: this._tool === "eraser" ? "#000000" : this._color,
+      color: this._tool === "eraser" ? "#000000" : this._resolveColor(this._color),
       width: this._tool === "eraser" ? ERASER_WIDTH : this._width,
       tool: this._tool,
       points: [[x / this._cssWidth, y / this._cssHeight]],
@@ -540,8 +554,8 @@ class FamilyboardWhiteboardCard extends HTMLElement {
         height: 480px;
         overflow: hidden;
         touch-action: none;
-        background-color: #fff;
-        background-image: radial-gradient(circle, rgba(0,0,0,0.07) 1px, transparent 1px);
+        background-color: var(--card-background-color, #fff);
+        background-image: radial-gradient(circle, var(--divider-color, rgba(0,0,0,0.07)) 1px, transparent 1px);
         background-size: 22px 22px;
       }
       .board-canvas { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
@@ -557,7 +571,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
         display: flex;
         flex-direction: column;
       }
-      .note-head { display: flex; align-items: center; justify-content: space-between; }
+      .note-head { display: flex; align-items: center; justify-content: space-between; color: #2b2320; }
       .note-handle { cursor: grab; opacity: 0.6; font-size: 0.9em; touch-action: none; padding: 4px; }
       .note-delete {
         border: none; background: none; cursor: pointer; font-size: 0.75em; opacity: 0.6;
@@ -566,7 +580,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
       .note-delete:hover { opacity: 1; }
       .note-text {
         flex: 1; font-size: 0.85em; line-height: 1.3; outline: none; word-break: break-word;
-        white-space: pre-wrap;
+        white-space: pre-wrap; color: #2b2320;
       }
       .note-text:empty::before { content: attr(data-placeholder); opacity: 0.5; }
     </style>`;
