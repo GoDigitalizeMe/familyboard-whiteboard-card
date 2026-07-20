@@ -416,6 +416,17 @@ class FamilyboardWhiteboardCard extends HTMLElement {
       if (!note) return;
 
       const textEl = noteEl.querySelector(".note-text");
+      // The note lives inside this card's shadow root, so HA's global
+      // keyboard-shortcut handler (bound on `document`, e.g. "e" for the
+      // entity quick-bar, "c" for commands, ...) doesn't reliably detect
+      // that a contenteditable field has focus and fires anyway. Stop the
+      // keydown/keypress/keyup from bubbling past the note so HA never
+      // sees it while typing here; the browser's own text editing still
+      // works since that isn't driven by propagation.
+      const stopKeyBubble = (ev) => ev.stopPropagation();
+      textEl.addEventListener("keydown", stopKeyBubble);
+      textEl.addEventListener("keyup", stopKeyBubble);
+      textEl.addEventListener("keypress", stopKeyBubble);
       textEl.addEventListener("focus", () => {
         this._editingNoteId = noteId;
       });
