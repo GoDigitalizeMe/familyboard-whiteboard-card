@@ -22,7 +22,8 @@
 const PEN_COLORS = ["auto", "#F2A6A0", "#8FC1D4", "#A8D5BA", "#C9A6E0", "#F2A65A"];
 const NOTE_COLORS = ["#F6D186", "#A8D5BA", "#C9A6E0", "#8FC1D4", "#F2A6A0", "#E397C4"];
 const PEN_WIDTHS = [3, 6, 12];
-const ERASER_WIDTH = 26;
+const ERASER_WIDTHS = [14, 26, 50];
+const MAX_UNDO_STEPS = 10;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => (
@@ -47,6 +48,8 @@ class FamilyboardWhiteboardCard extends HTMLElement {
     this._tool = "pen";
     this._color = PEN_COLORS[0];
     this._width = PEN_WIDTHS[1];
+    this._eraserWidth = ERASER_WIDTHS[1];
+    this._undoStack = [];
     this._drawing = null;
     this._lastPoint = null;
     this._draggingNoteId = null;
@@ -186,6 +189,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
             <div class="tool-group colors"></div>
             <div class="tool-group widths"></div>
             <div class="tool-group">
+              <button type="button" class="tool-btn undo-btn" title="Rückgängig" disabled>↩️</button>
               <button type="button" class="tool-btn text-btn" title="Text hinzufügen">🔤 Text</button>
               <button type="button" class="tool-btn clear-btn" title="Alles löschen">🗑</button>
             </div>
@@ -208,6 +212,8 @@ class FamilyboardWhiteboardCard extends HTMLElement {
     this._buildWidthButtons();
     this._buildToolButtons();
 
+    this._undoBtnEl = this.shadowRoot.querySelector(".undo-btn");
+    this._undoBtnEl.addEventListener("click", () => this._undo());
     this.shadowRoot.querySelector(".text-btn").addEventListener("click", () => this._addNote());
     this.shadowRoot.querySelector(".clear-btn").addEventListener("click", () => this._clearBoard());
 
@@ -229,6 +235,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
       btn.addEventListener("click", () => {
         this._tool = btn.dataset.tool;
         syncActive();
+        this._buildWidthButtons();
       });
     });
     syncActive();
@@ -262,17 +269,27 @@ class FamilyboardWhiteboardCard extends HTMLElement {
   }
 
   _buildWidthButtons() {
+    const isEraser = this._tool === "eraser";
+    const sizes = isEraser ? ERASER_WIDTHS : PEN_WIDTHS;
+    const current = isEraser ? this._eraserWidth : this._width;
     const container = this.shadowRoot.querySelector(".widths");
-    container.innerHTML = PEN_WIDTHS.map(
-      (w) => `<button type="button" class="width-btn" data-width="${w}"><span style="width:${w}px;height:${w}px;"></span></button>`
-    ).join("");
+    container.innerHTML = sizes
+      .map((w) => {
+        const dotSize = Math.min(w, 22);
+        const dotStyle = isEraser
+          ? `width:${dotSize}px;height:${dotSize}px;background:none;border:2px solid #2b2320;`
+          : `width:${dotSize}px;height:${dotSize}px;`;
+        return `<button type="button" class="width-btn" data-width="${w}"><span style="${dotStyle}"></span></button>`;
+      })
+      .join("");
     const buttons = container.querySelectorAll(".width-btn");
     const syncActive = () => {
-      buttons.forEach((b) => b.classList.toggle("active", Number(b.dataset.width) === this._width));
+      buttons.forEach((b) => b.classList.toggle("active", Number(b.dataset.width) === current));
     };
     buttons.forEach((b) => {
       b.addEventListener("click", () => {
-        this._width = Number(b.dataset.width);
+        if (this._tool === "eraser") this._eraserWidth = Number(b.dataset.width);
+        else this._width = Number(b.dataset.width);
         syncActive();
       });
     });
@@ -354,7 +371,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
     const [x, y] = this._canvasPoint(ev);
     this._drawing = {
       color: this._tool === "eraser" ? "#000000" : this._resolveColor(this._color),
-      width: this._tool === "eraser" ? ERASER_WIDTH : this._width,
+      width: this._tool === "eraser" ? this._eraserWidth : this._width,
       tool: this._tool,
       points: [[x / this._cssWidth, y / this._cssHeight]],
     };
@@ -382,15 +399,34 @@ class FamilyboardWhiteboardCard extends HTMLElement {
 
   _onPointerUp() {
     if (!this._drawing) return;
+    this._pushUndoSnapshot();
     this._board.strokes.push(this._drawing);
     this._drawing = null;
     this._lastPoint = null;
     this._scheduleSave(true);
   }
 
+  // -- Undo -------------------------------------------------------------
+
+  _pushUndoSnapshot() {
+    this._undoStack.push(JSON.parse(JSON.stringify(this._board)));
+    if (this._undoStack.length > MAX_UNDO_STEPS) this._undoStack.shift();
+    if (this._undoBtnEl) this._undoBtnEl.disabled = false;
+  }
+
+  _undo() {
+    if (!this._undoStack.length) return;
+    this._board = this._undoStack.pop();
+    if (this._undoBtnEl) this._undoBtnEl.disabled = this._undoStack.length === 0;
+    this._renderBoardContent();
+    this._renderNotes();
+    this._scheduleSave(true);
+  }
+
   // -- Text notes -----------------------------------------------------------
 
   _addNote() {
+    this._pushUndoSnapshot();
     const note = {
       id: randomId(),
       text: "",
@@ -456,6 +492,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
 
       noteEl.querySelector(".note-delete").addEventListener("click", (ev) => {
         ev.stopPropagation();
+        this._pushUndoSnapshot();
         this._board.notes = this._board.notes.filter((n) => n.id !== noteId);
         this._renderNotes();
         this._scheduleSave(true);
@@ -481,6 +518,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
         const onUp = (up) => {
           handle.removeEventListener("pointermove", onMove);
           handle.removeEventListener("pointerup", onUp);
+          this._pushUndoSnapshot();
           const x = up.clientX - wrapRect.left - offsetX;
           const y = up.clientY - wrapRect.top - offsetY;
           note.x = Math.min(1, Math.max(0, x / this._cssWidth));
@@ -501,6 +539,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
         : "Whiteboard wirklich komplett leeren? Das kann nicht rückgängig gemacht werden.";
     // eslint-disable-next-line no-alert
     if (!window.confirm(msg)) return;
+    this._pushUndoSnapshot();
     this._board = { strokes: [], notes: [] };
     this._renderBoardContent();
     this._renderNotes();
@@ -534,6 +573,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
         padding: 6px 8px; border-radius: 8px; color: #2b2320;
       }
       .tool-btn.active { background: rgba(255,255,255,0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+      .tool-btn:disabled { opacity: 0.35; cursor: default; }
       .text-btn, .clear-btn { font-size: 0.85em; font-weight: 600; }
       .swatch {
         width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent;
