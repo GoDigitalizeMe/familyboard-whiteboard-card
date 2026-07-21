@@ -271,7 +271,6 @@ class FamilyboardWhiteboardCard extends HTMLElement {
   _buildWidthButtons() {
     const isEraser = this._tool === "eraser";
     const sizes = isEraser ? ERASER_WIDTHS : PEN_WIDTHS;
-    const current = isEraser ? this._eraserWidth : this._width;
     const container = this.shadowRoot.querySelector(".widths");
     container.innerHTML = sizes
       .map((w) => {
@@ -284,6 +283,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
       .join("");
     const buttons = container.querySelectorAll(".width-btn");
     const syncActive = () => {
+      const current = this._tool === "eraser" ? this._eraserWidth : this._width;
       buttons.forEach((b) => b.classList.toggle("active", Number(b.dataset.width) === current));
     };
     buttons.forEach((b) => {
