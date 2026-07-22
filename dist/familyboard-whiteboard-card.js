@@ -449,7 +449,7 @@ class FamilyboardWhiteboardCard extends HTMLElement {
       .map(
         (note) => `
       <div class="note" data-note-id="${escapeHtml(note.id)}" style="
-          left:${note.x * this._cssWidth}px; top:${note.y * this._cssHeight}px; background:${note.color};
+          left:${note.x * this._cssWidth}px; top:${note.y * this._cssHeight}px; background:${escapeHtml(note.color)};
         ">
         <div class="note-head">
           <span class="note-handle" title="Verschieben">⠿</span>
